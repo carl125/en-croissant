@@ -33,6 +33,7 @@ const boardImages: string[] = [
   "grey.jpg",
   "metal.jpg",
   "olive.jpg",
+  "chesscom-green.svg",
   "newspaper.svg",
   "purple.png",
   "purple-diag.png",

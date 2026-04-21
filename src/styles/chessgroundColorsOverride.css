@@ -1,5 +1,5 @@
 cg-board {
-  background-image: var(--board-image, url("/board/gray.svg"));
+  background-image: var(--board-image, url("/board/chesscom-green.svg"));
   border-radius: var(--mantine-radius-default);
   overflow: hidden;
 }
