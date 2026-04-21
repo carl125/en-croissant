@@ -12,6 +12,7 @@ pub struct Puzzle {
     pub id: i32,
     pub fen: String,
     pub moves: String,
+    pub user_moves_first: bool,
     pub rating: i32,
     pub rating_deviation: i32,
     pub popularity: i32,

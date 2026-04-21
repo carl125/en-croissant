@@ -1,0 +1,21 @@
+{
+  "stages": {
+    "fetch": {
+      "config": "script/config/http_chesscom_tactics.json"
+    },
+    "normalize": {
+      "config": "script/config/normalize_chesscom_tactics.json"
+    },
+    "build": {
+      "config": "script/config/build_puzzle_db.json"
+    }
+  },
+  "options": {
+    "continueOnNormalizeWarnings": true,
+    "maxBatches": 10,
+    "stepIncrement": 20,
+    "stopOnShortBatch": true,
+    "saveRaw": false,
+    "saveNormalized": false
+  }
+}

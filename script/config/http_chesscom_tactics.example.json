@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://api.chess.com/v1/tactics/challenge/tactics",
+    "headers": {
+      "Accept": "*/*",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Authorization": "Bearer <token>",
+      "User-Agent": "Chesscom-iOS/4.9.48.24199 (iPhone; iOS 17.5; #ios_developers on Slack)",
+      "X-Client-Version": "iOS4.9.48",
+      "X-Chesscom-Bucketing-Id": "<device-id>",
+      "X-Chesscom-Device-Id": "<device-id>",
+      "X-Chesscom-Ps-Id": "<ps-id>"
+    },
+    "form": {
+      "batchSize": 2,
+      "challengeId": "<challenge-uuid>",
+      "step": 17
+    }
+  },
+  "output": {
+    "path": "script/output/chesscom_tactics_raw.json",
+    "pretty": true,
+    "includeMetadata": true
+  }
+}

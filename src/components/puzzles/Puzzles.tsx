@@ -138,9 +138,11 @@ function Puzzles({ id }: { id: string }) {
       ? wonPuzzles.reduce((acc, p) => acc + (p.timeSpent || 0), 0) / wonPuzzles.length / 1000
       : 0;
 
-  function setPuzzle(puzzle: { fen: string; moves: string[] }) {
+  function setPuzzle(puzzle: { fen: string; moves: string[]; user_moves_first?: boolean }) {
     setFen(puzzle.fen);
-    makeMove({ payload: parseUci(puzzle.moves[0])! });
+    if (!puzzle.user_moves_first && puzzle.moves.length > 0) {
+      makeMove({ payload: parseUci(puzzle.moves[0])! });
+    }
   }
 
   const solutionAbortRef = useRef<AbortController | null>(null);

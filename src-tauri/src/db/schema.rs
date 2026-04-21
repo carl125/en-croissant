@@ -3,6 +3,7 @@ diesel::table! {
         id -> Integer,
         fen -> Text,
         moves -> Text,
+        user_moves_first -> Bool,
         rating -> Integer,
         rating_deviation -> Integer,
         popularity -> Integer,

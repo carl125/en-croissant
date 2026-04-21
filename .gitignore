@@ -27,3 +27,17 @@ tsconfig.tsbuildinfo
 *.sw?
 
 src-tauri/gen/
+src-tauri/target/
+.venv/
+script/.venv/
+script/output/
+script/__pycache__/
+__pycache__/
+*.py[cod]
+
+# Local app-data path accidentally materialized inside the repo on Windows
+C/
+
+# Local script configs may contain tokens, local paths, and mutable pipeline state
+script/config/*.json
+!script/config/*.example.json

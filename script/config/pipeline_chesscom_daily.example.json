@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "GET",
+    "urlTemplate": "https://api.chess.com/v1/puzzles/daily/{date}",
+    "headers": {
+      "Accept": "*/*",
+      "Accept-Encoding": "identity",
+      "Accept-Language": "en-VN;q=1, vi-VN;q=0.9",
+      "Authorization": "Bearer <token>",
+      "User-Agent": "Chesscom-iOS/4.9.48.24199 (iPhone; iOS 17.5; #ios_developers on Slack)",
+      "X-Client-Version": "iOS4.9.48",
+      "X-Chesscom-Bucketing-Id": "<bucket-id>",
+      "X-Chesscom-Device-Id": "<device-id>",
+      "X-Chesscom-Ps-Id": "<ps-id>"
+    }
+  },
+  "stages": {
+    "build": {
+      "config": "script/config/build_puzzle_db.json"
+    }
+  },
+  "state": {
+    "currentDate": "2026-04-20",
+    "workingDate": null
+  },
+  "options": {
+    "oldestDate": "2021-01-01",
+    "maxDays": 30,
+    "saveRaw": false,
+    "saveNormalized": false,
+    "rawOutputPathTemplate": "script/output/chesscom_daily_raw_{date}.json",
+    "normalizedOutputPathTemplate": "script/output/chesscom_daily_normalized_{date}.json",
+    "idOffset": 1000000000,
+    "themeName": "daily",
+    "defaultRating": 800
+  }
+}

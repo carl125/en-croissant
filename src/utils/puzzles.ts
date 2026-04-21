@@ -10,6 +10,7 @@ export interface Puzzle {
     id: number;
     fen: string;
     moves: string[];
+    user_moves_first: boolean;
     rating: number;
     rating_deviation: number;
     popularity: number;

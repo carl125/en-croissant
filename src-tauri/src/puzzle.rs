@@ -1,6 +1,10 @@
 use std::{collections::VecDeque, fs::remove_file, path::PathBuf, sync::Mutex};
 
-use diesel::{dsl::sql, sql_types::Bool, Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{
+    dsl::sql,
+    sql_types::{Bool, Integer, Text},
+    Connection, ExpressionMethods, QueryDsl, RunQueryDsl,
+};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use specta::Type;
@@ -17,6 +21,14 @@ struct PuzzleCache {
     min_rating: u16,
     max_rating: u16,
     theme: Option<String>,
+}
+
+#[derive(diesel::QueryableByName)]
+struct TableInfoRow {
+    #[diesel(sql_type = Integer)]
+    cid: i32,
+    #[diesel(sql_type = Text)]
+    name: String,
 }
 
 impl PuzzleCache {
@@ -47,6 +59,7 @@ impl PuzzleCache {
             self.counter = 0;
 
             let mut db = diesel::SqliteConnection::establish(file).expect("open database");
+            ensure_puzzle_schema(&mut db)?;
 
             let new_puzzles: Vec<Puzzle> = if let Some(theme_name) = theme {
                 puzzles::table
@@ -86,6 +99,17 @@ impl PuzzleCache {
     }
 }
 
+fn ensure_puzzle_schema(db: &mut diesel::SqliteConnection) -> Result<(), Error> {
+    let columns: Vec<TableInfoRow> = diesel::sql_query("PRAGMA table_info(puzzles)").load(db)?;
+    if columns.iter().all(|column| column.name != "user_moves_first") {
+        diesel::sql_query(
+            "ALTER TABLE puzzles ADD COLUMN user_moves_first INTEGER NOT NULL DEFAULT 0",
+        )
+        .execute(db)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn get_puzzle(
@@ -118,6 +142,7 @@ pub async fn get_puzzle_db_info(file: PathBuf) -> Result<PuzzleDatabaseInfo, Err
 
     let mut db =
         diesel::SqliteConnection::establish(&path.to_string_lossy()).expect("open database");
+    ensure_puzzle_schema(&mut db)?;
 
     let puzzle_count = puzzles::table.count().get_result::<i64>(&mut db)? as i32;
 
@@ -144,6 +169,7 @@ pub fn delete_puzzle_database(file: String) -> Result<(), Error> {
 #[specta::specta]
 pub fn get_puzzle_themes(file: String) -> Result<Vec<String>, Error> {
     let mut db = diesel::SqliteConnection::establish(&file).expect("open database");
+    ensure_puzzle_schema(&mut db)?;
     let result: Vec<String> = themes::table
         .select(themes::name)
         .order(themes::name.asc())
@@ -155,6 +181,7 @@ pub fn get_puzzle_themes(file: String) -> Result<Vec<String>, Error> {
 #[specta::specta]
 pub fn get_themes_for_puzzle(file: String, puzzle_id: i32) -> Result<Vec<String>, Error> {
     let mut db = diesel::SqliteConnection::establish(&file).expect("open database");
+    ensure_puzzle_schema(&mut db)?;
     let result: Vec<String> = themes::table
         .inner_join(puzzle_themes::table)
         .filter(puzzle_themes::puzzle_id.eq(puzzle_id))
