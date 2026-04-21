@@ -1,0 +1,16 @@
+{
+  "stages": {
+    "fetch": {
+      "config": "script/config/fetch_chesscom_learning.json"
+    },
+    "build": {
+      "config": "script/config/build_puzzle_db.json"
+    }
+  },
+  "options": {
+    "saveRaw": true,
+    "saveNormalized": true,
+    "normalizedOutputPath": "script/output/chesscom_learning_normalized.json",
+    "prettyNormalized": true
+  }
+}

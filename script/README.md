@@ -113,6 +113,97 @@ WSL/Linux/macOS:
 ./.venv/bin/python script/normalize_chesscom_tactics.py --config script/config/normalize_chesscom_tactics.json
 ```
 
+## `fetch_chesscom_learning.py`
+
+Crawls the Chess.com `/v1/tactics/learning` endpoint by sweeping theme ids and
+rating buckets. The endpoint returns one puzzle per request, so this script
+dedupes by puzzle id and stops each bucket after a duplicate streak.
+
+The output is written as `data.tactics[]`, so it can be fed directly into
+`normalize_chesscom_tactics.py`.
+
+Config:
+
+- `script/config/fetch_chesscom_learning.json`
+- `script/config/fetch_chesscom_learning.example.json`
+- `script/config/normalize_chesscom_learning.json`
+- `script/config/normalize_chesscom_learning.example.json`
+
+Useful options:
+
+- `themes`: theme ids to sweep
+- `ratingBuckets`: `[minRating, maxRating]` ranges to sweep per theme
+- `missedValues`: missed filters to sweep; default `[0]`
+- `requestsPerBucket`: hard cap per theme/rating bucket
+- `stopAfterDuplicateStreak`: stop a bucket after this many repeated puzzle ids
+- `cacheBust`: adds a throwaway query param to avoid the endpoint's short cache
+- `resume`: load the existing output and skip completed buckets
+- `saveEveryBucket`: flush output after each theme/rating bucket
+- `progressDots`: print temporary dots while a bucket is running
+- `progressDotEvery`: print one dot per this many requests
+
+The default local config is intentionally broad: valid theme ids x rating
+buckets, with `missed=0`. With `requestsPerBucket` in the thousands, expect a
+long-running crawl; it is meant to be resumed across runs.
+
+### Example
+
+PowerShell:
+
+```powershell
+.\.venv\Scripts\python script/fetch_chesscom_learning.py --config script/config/fetch_chesscom_learning.json
+```
+
+WSL/Linux/macOS:
+
+```bash
+./.venv/bin/python script/fetch_chesscom_learning.py --config script/config/fetch_chesscom_learning.json
+```
+
+Small smoke run:
+
+```bash
+./.venv/bin/python script/fetch_chesscom_learning.py --config script/config/fetch_chesscom_learning.json --max-buckets 1 --requests-per-bucket 3
+```
+
+Focused run:
+
+```bash
+./.venv/bin/python script/fetch_chesscom_learning.py --config script/config/fetch_chesscom_learning.json --themes 72 --rating-bucket 100-3200 --requests-per-bucket 20 --no-resume
+```
+
+Normalize the learning output:
+
+```bash
+./.venv/bin/python script/normalize_chesscom_tactics.py --config script/config/normalize_chesscom_learning.json
+```
+
+## `pipeline_chesscom_learning.py`
+
+Runs the Chess.com learning tactics crawl directly into the shared puzzle DB:
+
+- crawl `/v1/tactics/learning`
+- normalize SAN moves to UCI
+- dedupe by puzzle id
+- insert new puzzles into the configured `.db3`
+
+Config:
+
+- `script/config/pipeline_chesscom_learning.json`
+- `script/config/pipeline_chesscom_learning.example.json`
+
+### Example
+
+```bash
+./.venv/bin/python script/pipeline_chesscom_learning.py --config script/config/pipeline_chesscom_learning.json
+```
+
+Small smoke run:
+
+```bash
+./.venv/bin/python script/pipeline_chesscom_learning.py --config script/config/pipeline_chesscom_learning.json --themes 72 --rating-bucket 100-3200 --requests-per-bucket 5 --no-resume
+```
+
 ## `normalize_chesscom_daily.py`
 
 Converts one Chess.com daily puzzle response into the shared intermediate puzzle format.

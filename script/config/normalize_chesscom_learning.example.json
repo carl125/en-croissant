@@ -1,0 +1,9 @@
+{
+  "input": {
+    "path": "script/output/chesscom_learning_raw.json"
+  },
+  "output": {
+    "path": "script/output/chesscom_learning_normalized.json",
+    "pretty": true
+  }
+}
