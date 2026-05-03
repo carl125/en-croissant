@@ -156,6 +156,7 @@ export type GameHeaders = {
     other?: Record<string, string>;
     // Repertoire headers
     start?: number[];
+    reveal?: number[];
     orientation?: "white" | "black";
 };
 

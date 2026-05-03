@@ -94,5 +94,6 @@ export function buildPuzzleTreeState(puzzle: Puzzle): TreeState {
     const startPath = Array.from({ length: visibleStart }, () => 0);
     tree.position = startPath;
     tree.headers.start = startPath;
+    tree.headers.reveal = startPath;
     return tree;
 }

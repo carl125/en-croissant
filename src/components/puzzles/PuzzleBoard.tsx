@@ -41,9 +41,11 @@ function PuzzleBoard({
   const position = useStore(store, (s) => s.position);
   const moveHighlight = useAtomValue(moveHighlightAtom);
   const boardShapes = useStore(store, (s) => s.currentNode().shapes);
+  const headers = useStore(store, (s) => s.headers);
   const makeMove = useStore(store, (s) => s.makeMove);
   const makeMoves = useStore(store, (s) => s.makeMoves);
   const goToPrevious = useStore(store, (s) => s.goToPrevious);
+  const setHeaders = useStore(store, (s) => s.setHeaders);
   const reset = useForceUpdate();
   const [jumpToNextPuzzleImmediately] = useAtom(jumpToNextPuzzleAtom);
 
@@ -53,7 +55,6 @@ function PuzzleBoard({
   if (puzzles.length > 0) {
     puzzle = puzzles[currentPuzzle];
   }
-  const [ended, setEnded] = useState(false);
   const replySequenceRef = useRef(0);
 
   useEffect(() => {
@@ -70,6 +71,7 @@ function PuzzleBoard({
 
   const contextLength = puzzle?.context_moves?.length ?? 0;
   const currentMove = puzzle ? Math.max(0, position.length - contextLength) : 0;
+  const revealPath = headers.reveal ?? headers.start ?? [];
   const orientation = puzzle?.fen
     ? parseFen(puzzle.fen).unwrap().turn === "white"
       ? "white"
@@ -80,6 +82,25 @@ function PuzzleBoard({
   const dests = pos ? chessgroundDests(pos) : new Map();
   const turn = pos?.turn || "white";
   const showCoordinates = useAtomValue(showCoordinatesAtom);
+
+  function updateRevealPath(pathLength: number) {
+    const nextReveal = Array.from({ length: pathLength }, () => 0);
+    const currentReveal = store.getState().headers.reveal ?? store.getState().headers.start ?? [];
+    if (equal(currentReveal, nextReveal)) {
+      return;
+    }
+    setHeaders({
+      ...store.getState().headers,
+      reveal: nextReveal,
+    });
+  }
+
+  const userToMoveIndex = puzzle ? (puzzle.user_moves_first ? 0 : 1) : 0;
+  const canPlayAtCurrentPosition =
+    !!puzzle &&
+    equal(position, revealPath) &&
+    currentMove % 2 === userToMoveIndex &&
+    (puzzle.completion === "incomplete" || puzzle.completion === "incorrect");
 
   async function checkMove(move: Move) {
     if (!pos) return;
@@ -96,13 +117,13 @@ function PuzzleBoard({
         mainline: true,
         changeHeaders: false,
       });
+      updateRevealPath(contextLength + currentMove + 1);
       reset();
 
       if (currentMove === puzzle.moves.length - 1) {
         if (puzzle.completion !== "incorrect") {
           await changeCompletion("correct");
         }
-        setEnded(false);
 
         if (db && jumpToNextPuzzleImmediately) {
           await generatePuzzle(db);
@@ -123,6 +144,18 @@ function PuzzleBoard({
           mainline: true,
           changeHeaders: false,
         });
+        updateRevealPath(contextLength + currentMove + 2);
+
+        if (currentMove + 1 === puzzle.moves.length - 1) {
+          if (puzzle.completion !== "incorrect") {
+            await changeCompletion("correct");
+          }
+
+          if (db && jumpToNextPuzzleImmediately) {
+            await generatePuzzle(db);
+            reset();
+          }
+        }
       }
     } else {
       const replySequence = ++replySequenceRef.current;
@@ -131,10 +164,9 @@ function PuzzleBoard({
         changeHeaders: false,
       });
       reset();
-      if (!ended) {
+      if (puzzle.completion === "incomplete") {
         await changeCompletion("incorrect");
       }
-      setEnded(true);
       await delay(PUZZLE_INCORRECT_REVERT_DELAY_MS);
       if (replySequence !== replySequenceRef.current) {
         return;
@@ -181,11 +213,7 @@ function PuzzleBoard({
           movable={{
             free: false,
             color:
-              puzzle &&
-              equal(position, Array.from({ length: currentMove + contextLength }, () => 0)) &&
-              (puzzle.completion === "incomplete" || puzzle.completion === "incorrect")
-                ? turn
-                : undefined,
+              canPlayAtCurrentPosition ? turn : undefined,
             dests: dests,
             events: {
               after: (orig, dest) => {

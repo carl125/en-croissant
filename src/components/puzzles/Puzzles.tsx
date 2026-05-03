@@ -74,6 +74,7 @@ function Puzzles({ id }: { id: string }) {
   const { t } = useTranslation();
   const store = useContext(TreeStateContext)!;
   const goToStart = useStore(store, (s) => s.goToStart);
+  const goToMove = useStore(store, (s) => s.goToMove);
   const goToNext = useStore(store, (s) => s.goToNext);
   const reset = useStore(store, (s) => s.reset);
   const makeMove = useStore(store, (s) => s.makeMove);
@@ -82,6 +83,7 @@ function Puzzles({ id }: { id: string }) {
   const currentMove = useStore(store, (s) => s.currentNode().move);
   const currentFen = useStore(store, (s) => s.currentNode().fen);
   const currentPath = useStore(store, (s) => s.position);
+  const revealPath = useStore(store, (s) => s.headers.reveal);
   const [puzzles, setPuzzles] = useSessionStorage<Puzzle[]>({
     key: `${id}-puzzles`,
     defaultValue: [],
@@ -288,6 +290,9 @@ function Puzzles({ id }: { id: string }) {
 
   const getPuzzleStartPathLength = (puzzle?: Puzzle) =>
     getContextLength(puzzle) + getVisibleStartSolutionIndex(puzzle);
+
+  const getPuzzleRevealPath = (puzzle?: Puzzle) =>
+    revealPath ?? Array.from({ length: getPuzzleStartPathLength(puzzle) }, () => 0);
 
   const getCurrentSolutionIndex = (puzzle?: Puzzle): number | null => {
     if (!puzzle) return null;
@@ -813,8 +818,8 @@ function Puzzles({ id }: { id: string }) {
                 isPuzzleIncomplete && !isPlayingSolution
                   ? () => {
                       const curPuzzle = puzzles[currentPuzzle];
-                      const puzzleStartPathLength = getPuzzleStartPathLength(curPuzzle);
-                      if (currentPath.length < puzzleStartPathLength) {
+                      const puzzleRevealPath = getPuzzleRevealPath(curPuzzle);
+                      if (currentPath.length < puzzleRevealPath.length) {
                         goToNext();
                       }
                     }
@@ -824,9 +829,9 @@ function Puzzles({ id }: { id: string }) {
                 isPuzzleIncomplete && !isPlayingSolution
                   ? () => {
                       const curPuzzle = puzzles[currentPuzzle];
-                      const puzzleStartPathLength = getPuzzleStartPathLength(curPuzzle);
-                      if (currentPath.length < puzzleStartPathLength) {
-                        goToStart();
+                      const puzzleRevealPath = getPuzzleRevealPath(curPuzzle);
+                      if (currentPath.length < puzzleRevealPath.length) {
+                        goToMove(puzzleRevealPath);
                       }
                     }
                   : undefined
