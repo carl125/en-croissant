@@ -55,8 +55,8 @@ use crate::lexer::lex_pgn;
 use crate::oauth::authenticate;
 use crate::pgn::{count_pgn_games, delete_game, read_games, write_game};
 use crate::puzzle::{
-    delete_puzzle_database, get_puzzle, get_puzzle_db_info, get_puzzle_themes,
-    get_themes_for_puzzle,
+    create_user_puzzle, delete_puzzle_database, get_puzzle, get_puzzle_by_slug,
+    get_puzzle_db_info, get_puzzle_themes, get_themes_for_puzzle,
 };
 use crate::sound::get_sound_server_port;
 use crate::{
@@ -119,6 +119,7 @@ fn main() {
             get_engine_logs,
             memory_size,
             get_puzzle,
+            get_puzzle_by_slug,
             search_opening_name,
             get_opening_from_fen,
             get_opening_from_fens,
@@ -158,6 +159,7 @@ fn main() {
             get_puzzle_themes,
             get_themes_for_puzzle,
             delete_puzzle_database,
+            create_user_puzzle,
             start_game,
             get_game_state,
             make_game_move,
@@ -235,10 +237,6 @@ fn main() {
 
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_cli::init())?;
-
-            #[cfg(desktop)]
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             log::info!("Finished rust initialization");
 

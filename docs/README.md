@@ -7,6 +7,10 @@ Suggested convention:
 - `features/`: focused notes for individual areas such as puzzles, databases, engines, or accounts
 - `decisions/`: design decisions for this fork
 
+Current feature notes:
+- `features/puzzles.md`: external puzzle fetch, normalize, and DB build pipeline
+- `features/user-created-puzzles.md`: local-only personal puzzle creation and slug-based reload flow
+
 This directory is intentionally fork-specific and does not need to match upstream.
 
 

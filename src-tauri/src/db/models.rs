@@ -10,6 +10,9 @@ use crate::db::schema::*;
 #[diesel(table_name = puzzles)]
 pub struct Puzzle {
     pub id: i32,
+    pub slug: Option<String>,
+    pub source_fen: Option<String>,
+    pub context_moves: Option<String>,
     pub fen: String,
     pub moves: String,
     pub user_moves_first: bool,

@@ -12,12 +12,24 @@ import { useStore } from "zustand";
 import { keyMapAtom } from "@/state/keybinds";
 import { TreeStateContext } from "./TreeStateContext";
 
-function MoveControls({ readOnly }: { readOnly?: boolean }) {
+function MoveControls({
+  readOnly,
+  onNext,
+  onPrevious,
+  onStart,
+  onEnd,
+}: {
+  readOnly?: boolean;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  onStart?: () => void;
+  onEnd?: () => void;
+}) {
   const store = useContext(TreeStateContext)!;
-  const next = useStore(store, (s) => s.goToNext);
-  const previous = useStore(store, (s) => s.goToPrevious);
-  const start = useStore(store, (s) => s.goToStart);
-  const end = useStore(store, (s) => s.goToEnd);
+  const defaultNext = useStore(store, (s) => s.goToNext);
+  const defaultPrevious = useStore(store, (s) => s.goToPrevious);
+  const defaultStart = useStore(store, (s) => s.goToStart);
+  const defaultEnd = useStore(store, (s) => s.goToEnd);
   const deleteMove = useStore(store, (s) => s.deleteMove);
   const startBranch = useStore(store, (s) => s.goToBranchStart);
   const endBranch = useStore(store, (s) => s.goToBranchEnd);
@@ -25,6 +37,11 @@ function MoveControls({ readOnly }: { readOnly?: boolean }) {
   const previousBranch = useStore(store, (s) => s.previousBranch);
   const nextBranching = useStore(store, (s) => s.nextBranching);
   const previousBranching = useStore(store, (s) => s.previousBranching);
+
+  const next = onNext ?? defaultNext;
+  const previous = onPrevious ?? defaultPrevious;
+  const start = onStart ?? defaultStart;
+  const end = onEnd ?? defaultEnd;
 
   const keyMap = useAtomValue(keyMapAtom);
   useHotkeys(keyMap.PREVIOUS_MOVE.keys, previous);

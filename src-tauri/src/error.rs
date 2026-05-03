@@ -66,6 +66,9 @@ pub enum Error {
     #[error("No puzzles")]
     NoPuzzles,
 
+    #[error("Invalid puzzle start: {0}")]
+    InvalidPuzzleStart(String),
+
     #[error("Players aren't the same. They have played against each other")]
     NotDistinctPlayers,
 

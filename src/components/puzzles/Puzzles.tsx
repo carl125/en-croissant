@@ -15,6 +15,7 @@ import {
   Stack,
   Switch,
   Text,
+  TextInput,
   Tooltip,
 } from "@mantine/core";
 import { useSessionStorage } from "@mantine/hooks";
@@ -36,6 +37,7 @@ import { useStore } from "zustand";
 import { commands, type PuzzleDatabaseInfo } from "@/bindings";
 import {
   activeTabAtom,
+  currentInvisibleAtom,
   currentPuzzleAtom,
   currentPuzzleTimerAtom,
   hidePuzzleRatingAtom,
@@ -49,7 +51,13 @@ import {
 } from "@/state/atoms";
 import { positionFromFen } from "@/utils/chessops";
 import { formatThemeLabel, formatTime } from "@/utils/format";
-import { type Completion, getPuzzleDatabases, type Puzzle } from "@/utils/puzzles";
+import {
+  buildPuzzleTreeState,
+  getUserPuzzleDbPath,
+  type Completion,
+  getPuzzleDatabases,
+  type Puzzle,
+} from "@/utils/puzzles";
 import { createTab } from "@/utils/tabs";
 import { defaultTree } from "@/utils/treeReducer";
 import { unwrap } from "@/utils/unwrap";
@@ -59,22 +67,27 @@ import GameNotation from "../common/GameNotation";
 import MoveControls from "../common/MoveControls";
 import { TreeStateContext } from "../common/TreeStateContext";
 import AddPuzzle from "./AddPuzzle";
+import PersonalPuzzleModal from "./PersonalPuzzleModal";
 import PuzzleBoard from "./PuzzleBoard";
 
 function Puzzles({ id }: { id: string }) {
   const { t } = useTranslation();
   const store = useContext(TreeStateContext)!;
-  const setFen = useStore(store, (s) => s.setFen);
   const goToStart = useStore(store, (s) => s.goToStart);
+  const goToNext = useStore(store, (s) => s.goToNext);
   const reset = useStore(store, (s) => s.reset);
   const makeMove = useStore(store, (s) => s.makeMove);
+  const setState = useStore(store, (s) => s.setState);
   const setShapes = useStore(store, (s) => s.setShapes);
   const currentMove = useStore(store, (s) => s.currentNode().move);
+  const currentFen = useStore(store, (s) => s.currentNode().fen);
+  const currentPath = useStore(store, (s) => s.position);
   const [puzzles, setPuzzles] = useSessionStorage<Puzzle[]>({
     key: `${id}-puzzles`,
     defaultValue: [],
   });
   const [currentPuzzle, setCurrentPuzzle] = useAtom(currentPuzzleAtom);
+  const setInvisible = useSetAtom(currentInvisibleAtom);
 
   const [puzzleDbs, setPuzzleDbs] = useState<PuzzleDatabaseInfo[]>([]);
   const [selectedDb, setSelectedDb] = useAtom(selectedPuzzleDbAtom);
@@ -138,11 +151,9 @@ function Puzzles({ id }: { id: string }) {
       ? wonPuzzles.reduce((acc, p) => acc + (p.timeSpent || 0), 0) / wonPuzzles.length / 1000
       : 0;
 
-  function setPuzzle(puzzle: { fen: string; moves: string[]; user_moves_first?: boolean }) {
-    setFen(puzzle.fen);
-    if (!puzzle.user_moves_first && puzzle.moves.length > 0) {
-      makeMove({ payload: parseUci(puzzle.moves[0])! });
-    }
+  function loadPuzzleIntoBoard(puzzle: Puzzle) {
+    setState(buildPuzzleTreeState(puzzle));
+    setInvisible(true);
   }
 
   const solutionAbortRef = useRef<AbortController | null>(null);
@@ -157,7 +168,7 @@ function Puzzles({ id }: { id: string }) {
       solutionAbortRef.current?.abort();
       setIsPlayingSolution(false);
       setCurrentPuzzle(nextIndex);
-      setPuzzle(puzzles[nextIndex]);
+      loadPuzzleIntoBoard(puzzles[nextIndex]);
       if (trackTime) {
         setTimerStart(Date.now() - (puzzles[nextIndex].timeSpent || 0));
       }
@@ -179,6 +190,8 @@ function Puzzles({ id }: { id: string }) {
     const puzzle = unwrap(res);
     const newPuzzle: Puzzle = {
       ...puzzle,
+      source_fen: puzzle.source_fen,
+      context_moves: puzzle.context_moves ? puzzle.context_moves.split(" ") : [],
       moves: puzzle.moves.split(" "),
       completion: "incomplete",
     };
@@ -186,7 +199,7 @@ function Puzzles({ id }: { id: string }) {
       return [...puzzles, newPuzzle];
     });
     setCurrentPuzzle(puzzles.length);
-    setPuzzle(newPuzzle);
+    loadPuzzleIntoBoard(newPuzzle);
     if (trackTime) {
       setTimerStart(Date.now());
     }
@@ -214,8 +227,11 @@ function Puzzles({ id }: { id: string }) {
   }
 
   const [addOpened, setAddOpened] = useState(false);
+  const [personalOpened, setPersonalOpened] = useState(false);
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [isPlayingSolution, setIsPlayingSolution] = useState(false);
+  const [slugInput, setSlugInput] = useState("");
+  const [slugLoading, setSlugLoading] = useState(false);
 
   const [progressive, setProgressive] = useAtom(progressivePuzzlesAtom);
   const [hideRating, setHideRating] = useAtom(hidePuzzleRatingAtom);
@@ -263,27 +279,38 @@ function Puzzles({ id }: { id: string }) {
   const [, setTabs] = useAtom(tabsAtom);
   const setActiveTab = useSetAtom(activeTabAtom);
 
-  const turnToMove =
-    puzzles[currentPuzzle] !== undefined
-      ? positionFromFen(puzzles[currentPuzzle]?.fen)[0]?.turn
-      : null;
+  const turnToMove = currentFen !== undefined ? positionFromFen(currentFen)[0]?.turn : null;
+
+  const getContextLength = (puzzle?: Puzzle) => puzzle?.context_moves?.length ?? 0;
+
+  const getVisibleStartSolutionIndex = (puzzle?: Puzzle) =>
+    puzzle ? (puzzle.user_moves_first ? 0 : Math.min(1, puzzle.moves.length)) : 0;
+
+  const getPuzzleStartPathLength = (puzzle?: Puzzle) =>
+    getContextLength(puzzle) + getVisibleStartSolutionIndex(puzzle);
+
+  const getCurrentSolutionIndex = (puzzle?: Puzzle): number | null => {
+    if (!puzzle) return null;
+    const contextLength = getContextLength(puzzle);
+    if (currentPath.length < contextLength) {
+      return null;
+    }
+    return Math.max(0, currentPath.length - contextLength);
+  };
 
   const currentlyOnLastMoveOrNoLastMove = (): boolean => {
-    if (!currentMove) return true;
-
-    const moves = puzzles[currentPuzzle]?.moves;
-    if (!moves) return true;
-
-    const lastMoveIndex = moves.indexOf(makeUci(currentMove));
-    return lastMoveIndex + 1 === moves.length;
+    const curPuzzle = puzzles[currentPuzzle];
+    const currentSolutionIndex = getCurrentSolutionIndex(curPuzzle);
+    if (!curPuzzle || currentSolutionIndex === null) return true;
+    return currentSolutionIndex >= curPuzzle.moves.length;
   };
 
   const nextMoveUci = () => {
     const curPuzzle = puzzles[currentPuzzle];
-    if (!curPuzzle || !currentMove) return;
+    const currentSolutionIndex = getCurrentSolutionIndex(curPuzzle);
+    if (!curPuzzle || currentSolutionIndex === null) return;
 
-    const indexOfNextMoveToPlay = curPuzzle.moves.indexOf(makeUci(currentMove)) + 1;
-    const nextMoveUci = curPuzzle.moves[indexOfNextMoveToPlay];
+    const nextMoveUci = curPuzzle.moves[currentSolutionIndex];
     if (!nextMoveUci) return;
 
     const nextMove = parseUci(nextMoveUci);
@@ -291,6 +318,60 @@ function Puzzles({ id }: { id: string }) {
 
     return nextMove;
   };
+
+  function setActivePuzzleSession(puzzleData: {
+    id: number;
+    slug?: string | null;
+    source_fen?: string | null;
+    context_moves?: string | null;
+    fen: string;
+    moves: string;
+    user_moves_first: boolean;
+    rating: number;
+    rating_deviation: number;
+    popularity: number;
+    nb_plays: number;
+    dbPath?: string;
+  }) {
+    const { dbPath, ...rawPuzzle } = puzzleData;
+    const nextPuzzle: Puzzle = {
+      ...rawPuzzle,
+      source_fen: rawPuzzle.source_fen ?? rawPuzzle.fen,
+      context_moves: rawPuzzle.context_moves ? rawPuzzle.context_moves.split(" ") : [],
+      moves: rawPuzzle.moves.split(" "),
+      completion: "incomplete",
+    };
+
+    solutionAbortRef.current?.abort();
+    setIsPlayingSolution(false);
+    if (dbPath) {
+      setSelectedDb(dbPath);
+    }
+    setPuzzles([nextPuzzle]);
+    setCurrentPuzzle(0);
+    reset();
+    loadPuzzleIntoBoard(nextPuzzle);
+    if (trackTime) {
+      setTimerStart(Date.now());
+    } else {
+      setTimerStart(null);
+    }
+  }
+
+  async function openPuzzleBySlug(slug: string) {
+    const normalizedSlug = slug.trim();
+    if (!normalizedSlug) return;
+
+    setSlugLoading(true);
+    try {
+      const dbPath = await getUserPuzzleDbPath();
+      const puzzle = unwrap(await commands.getPuzzleBySlug(dbPath, normalizedSlug));
+      setActivePuzzleSession({ ...puzzle, dbPath });
+      setSlugInput(normalizedSlug);
+    } finally {
+      setSlugLoading(false);
+    }
+  }
 
   return (
     <>
@@ -318,6 +399,16 @@ function Puzzles({ id }: { id: string }) {
             opened={addOpened}
             setOpened={setAddOpened}
             setPuzzleDbs={setPuzzleDbs}
+          />
+          <PersonalPuzzleModal
+            opened={personalOpened}
+            setOpened={setPersonalOpened}
+            onCreated={({ dbs, dbPath, puzzle, slug }) => {
+              setPuzzleDbs(dbs);
+              setSlugInput(slug);
+              navigator.clipboard?.writeText(slug).catch(() => undefined);
+              setActivePuzzleSession({ ...puzzle, dbPath });
+            }}
           />
           <ConfirmModal
             title="Delete Puzzle Database"
@@ -421,6 +512,22 @@ function Puzzles({ id }: { id: string }) {
                     clearable
                     searchable
                   />
+                  <Group align="end">
+                    <Button variant="light" onClick={() => setPersonalOpened(true)}>
+                      Create Personal Puzzle
+                    </Button>
+                  </Group>
+                  <Group align="end" grow>
+                    <TextInput
+                      label="Open by slug"
+                      placeholder="pz_9f3k2m7a"
+                      value={slugInput}
+                      onChange={(event) => setSlugInput(event.currentTarget.value)}
+                    />
+                    <Button loading={slugLoading} onClick={() => openPuzzleBySlug(slugInput)}>
+                      Open
+                    </Button>
+                  </Group>
                   <SimpleGrid cols={2} spacing="sm">
                     <Switch
                       label={t("Puzzle.Progressive")}
@@ -557,14 +664,17 @@ function Puzzles({ id }: { id: string }) {
                       },
                       setTabs,
                       setActiveTab,
-                      pgn: puzzles[currentPuzzle]?.moves.join(" "),
+                      pgn: [
+                        ...(puzzles[currentPuzzle]?.context_moves ?? []),
+                        ...(puzzles[currentPuzzle]?.moves ?? []),
+                      ].join(" "),
                       headers: {
                         ...defaultTree().headers,
-                        fen: puzzles[currentPuzzle]?.fen,
+                        fen: puzzles[currentPuzzle]?.source_fen ?? puzzles[currentPuzzle]?.fen,
                         orientation:
                           parseFen(puzzles[currentPuzzle].fen).unwrap().turn === "white"
-                            ? "black"
-                            : "white",
+                            ? "white"
+                            : "black",
                       },
                     })
                   }
@@ -652,7 +762,8 @@ function Puzzles({ id }: { id: string }) {
                 }
                 setIsPlayingSolution(true);
                 goToStart();
-                for (let i = 0; i < curPuzzle.moves.length; i++) {
+                const solutionStartIndex = getVisibleStartSolutionIndex(curPuzzle);
+                for (let i = solutionStartIndex; i < curPuzzle.moves.length; i++) {
                   if (abortController.signal.aborted) break;
                   makeMove({
                     payload: parseUci(curPuzzle.moves[i])!,
@@ -684,7 +795,7 @@ function Puzzles({ id }: { id: string }) {
                   solutionAbortRef.current?.abort();
                   setIsPlayingSolution(false);
                   setCurrentPuzzle(i);
-                  setPuzzle(puzzles[i]);
+                  loadPuzzleIntoBoard(puzzles[i]);
                   if (puzzles[i].completion === "incomplete") {
                     setTimerStart(Date.now() - (puzzles[i].timeSpent || 0));
                   } else {
@@ -695,8 +806,32 @@ function Puzzles({ id }: { id: string }) {
             </ScrollArea>
           </Paper>
           <Stack flex={1} gap="xs">
-            <GameNotation />
-            <MoveControls readOnly />
+            <GameNotation topBar />
+            <MoveControls
+              readOnly
+              onNext={
+                isPuzzleIncomplete && !isPlayingSolution
+                  ? () => {
+                      const curPuzzle = puzzles[currentPuzzle];
+                      const puzzleStartPathLength = getPuzzleStartPathLength(curPuzzle);
+                      if (currentPath.length < puzzleStartPathLength) {
+                        goToNext();
+                      }
+                    }
+                  : undefined
+              }
+              onEnd={
+                isPuzzleIncomplete && !isPlayingSolution
+                  ? () => {
+                      const curPuzzle = puzzles[currentPuzzle];
+                      const puzzleStartPathLength = getPuzzleStartPathLength(curPuzzle);
+                      if (currentPath.length < puzzleStartPathLength) {
+                        goToStart();
+                      }
+                    }
+                  : undefined
+              }
+            />
           </Stack>
         </Stack>
       </Portal>

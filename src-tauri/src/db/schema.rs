@@ -1,6 +1,9 @@
 diesel::table! {
     puzzles (id) {
         id -> Integer,
+        slug -> Nullable<Text>,
+        source_fen -> Nullable<Text>,
+        context_moves -> Nullable<Text>,
         fen -> Text,
         moves -> Text,
         user_moves_first -> Bool,

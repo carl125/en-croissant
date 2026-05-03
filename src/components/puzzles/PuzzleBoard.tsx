@@ -5,16 +5,23 @@ import { chessgroundDests, chessgroundMove } from "chessops/compat";
 import { parseFen } from "chessops/fen";
 import equal from "fast-deep-equal";
 import { useAtom, useAtomValue } from "jotai";
-import { useContext, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { Chessground } from "@/chessground/Chessground";
 import { jumpToNextPuzzleAtom, moveHighlightAtom, showCoordinatesAtom } from "@/state/atoms";
 import classes from "@/styles/Chessboard.module.css";
 import { positionFromFen } from "@/utils/chessops";
 import type { Completion, Puzzle } from "@/utils/puzzles";
-import { getNodeAtPath, treeIteratorMainLine } from "@/utils/treeReducer";
+import { getNodeAtPath } from "@/utils/treeReducer";
 import PromotionModal from "../boards/PromotionModal";
 import { TreeStateContext } from "../common/TreeStateContext";
+
+const PUZZLE_REPLY_DELAY_MS = 400;
+const PUZZLE_INCORRECT_REVERT_DELAY_MS = 500;
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 function PuzzleBoard({
   puzzles,
@@ -36,6 +43,7 @@ function PuzzleBoard({
   const boardShapes = useStore(store, (s) => s.currentNode().shapes);
   const makeMove = useStore(store, (s) => s.makeMove);
   const makeMoves = useStore(store, (s) => s.makeMoves);
+  const goToPrevious = useStore(store, (s) => s.goToPrevious);
   const reset = useForceUpdate();
   const [jumpToNextPuzzleImmediately] = useAtom(jumpToNextPuzzleAtom);
 
@@ -46,25 +54,26 @@ function PuzzleBoard({
     puzzle = puzzles[currentPuzzle];
   }
   const [ended, setEnded] = useState(false);
+  const replySequenceRef = useRef(0);
+
+  useEffect(() => {
+    replySequenceRef.current += 1;
+  }, [currentPuzzle]);
+
+  useEffect(() => {
+    return () => {
+      replySequenceRef.current += 1;
+    };
+  }, []);
 
   const [pos] = positionFromFen(currentNode.fen);
 
-  const treeIter = treeIteratorMainLine(root);
-  treeIter.next();
-  let currentMove = 0;
-  if (puzzle) {
-    for (const { node } of treeIter) {
-      if (node.move && makeUci(node.move) === puzzle.moves[currentMove]) {
-        currentMove++;
-      } else {
-        break;
-      }
-    }
-  }
+  const contextLength = puzzle?.context_moves?.length ?? 0;
+  const currentMove = puzzle ? Math.max(0, position.length - contextLength) : 0;
   const orientation = puzzle?.fen
     ? parseFen(puzzle.fen).unwrap().turn === "white"
-      ? "black"
-      : "white"
+      ? "white"
+      : "black"
     : "white";
   const [pendingMove, setPendingMove] = useState<NormalMove | null>(null);
 
@@ -81,6 +90,14 @@ function PuzzleBoard({
     newPos.play(move);
 
     if (puzzle.moves[currentMove] === uci || newPos.isCheckmate()) {
+      const replySequence = ++replySequenceRef.current;
+      makeMoves({
+        payload: [uci],
+        mainline: true,
+        changeHeaders: false,
+      });
+      reset();
+
       if (currentMove === puzzle.moves.length - 1) {
         if (puzzle.completion !== "incorrect") {
           await changeCompletion("correct");
@@ -92,25 +109,39 @@ function PuzzleBoard({
           reset();
           return;
         }
+        return;
       }
-      const newMoves = puzzle.moves.slice(currentMove, currentMove + 2);
-      makeMoves({
-        payload: newMoves,
-        mainline: true,
-        changeHeaders: false,
-      });
+
+      const replyUci = puzzle.moves[currentMove + 1];
+      if (replyUci) {
+        await delay(PUZZLE_REPLY_DELAY_MS);
+        if (replySequence !== replySequenceRef.current) {
+          return;
+        }
+        makeMoves({
+          payload: [replyUci],
+          mainline: true,
+          changeHeaders: false,
+        });
+      }
     } else {
+      const replySequence = ++replySequenceRef.current;
       makeMove({
         payload: move,
-        changePosition: false,
         changeHeaders: false,
       });
+      reset();
       if (!ended) {
         await changeCompletion("incorrect");
       }
       setEnded(true);
+      await delay(PUZZLE_INCORRECT_REVERT_DELAY_MS);
+      if (replySequence !== replySequenceRef.current) {
+        return;
+      }
+      goToPrevious();
+      reset();
     }
-    reset();
   }
 
   const { ref: parentRef, height: parentHeight } = useElementSize();
@@ -151,7 +182,7 @@ function PuzzleBoard({
             free: false,
             color:
               puzzle &&
-              equal(position, Array(currentMove).fill(0)) &&
+              equal(position, Array.from({ length: currentMove + contextLength }, () => 0)) &&
               (puzzle.completion === "incomplete" || puzzle.completion === "incorrect")
                 ? turn
                 : undefined,
