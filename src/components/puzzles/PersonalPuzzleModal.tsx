@@ -13,13 +13,11 @@ import {
   Textarea,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { parseFen } from "chessops/fen";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { commands, type Puzzle as BoundPuzzle, type PuzzleDatabaseInfo } from "@/bindings";
-import { positionFromFen } from "@/utils/chessops";
-import { getPuzzleDatabases, getUserPuzzleDbPath } from "@/utils/puzzles";
+import { getPuzzleDatabases, getUserPuzzleDbPath, type Puzzle as FrontendPuzzle } from "@/utils/puzzles";
 import { unwrap } from "@/utils/unwrap";
 
 type CreateResult = {
@@ -28,6 +26,8 @@ type CreateResult = {
   puzzle: BoundPuzzle;
   slug: string;
 };
+
+type EditablePersonalPuzzle = FrontendPuzzle;
 
 function estimatePlyCount(lineText: string): number {
   return lineText
@@ -38,33 +38,13 @@ function estimatePlyCount(lineText: string): number {
     .filter((token) => !["*", "1-0", "0-1", "1/2-1/2"].includes(token)).length;
 }
 
-const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
-function getFenMoveStart(sourceFen: string): { moveNumber: number; side: "white" | "black" } | null {
-  try {
-    const setup = parseFen(sourceFen).unwrap();
-    return {
-      moveNumber: setup.fullmoves,
-      side: setup.turn,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function computeSplitPly(
-  sourceFen: string,
   startMoveNumber: number,
   startSide: "white" | "black",
   totalPlies: number,
 ): number | null {
-  const fenStart = getFenMoveStart(sourceFen);
-  if (!fenStart) {
-    return null;
-  }
-
-  let moveNumber = fenStart.moveNumber;
-  let side: "white" | "black" = fenStart.side;
+  let moveNumber = 1;
+  let side: "white" | "black" = "white";
   for (let ply = 0; ply < totalPlies; ply++) {
     if (moveNumber === startMoveNumber && side === startSide) {
       return ply;
@@ -86,11 +66,6 @@ function validatePuzzleDefinition(
   startSide: "white" | "black",
   userMovesFirst: boolean,
 ): string | null {
-  const [pos, error] = positionFromFen(STARTING_FEN);
-  if (error || !pos) {
-    return "Invalid source FEN.";
-  }
-
   if (!lineText.trim()) {
     return "A full move line is required.";
   }
@@ -100,7 +75,7 @@ function validatePuzzleDefinition(
     return "The move line did not contain any playable moves.";
   }
 
-  const splitPly = computeSplitPly(STARTING_FEN, startMoveNumber, startSide, totalPlies);
+  const splitPly = computeSplitPly(startMoveNumber, startSide, totalPlies);
   if (splitPly === null) {
     return "Start move could not be matched inside the provided line.";
   }
@@ -116,45 +91,81 @@ function validatePuzzleDefinition(
 export default function PersonalPuzzleModal({
   opened,
   setOpened,
-  onCreated,
+  mode,
+  initialPuzzle,
+  dbPath,
+  onSaved,
 }: {
   opened: boolean;
   setOpened: (opened: boolean) => void;
-  onCreated: (result: CreateResult) => void;
+  mode: "create" | "edit";
+  initialPuzzle?: EditablePersonalPuzzle | null;
+  dbPath?: string | null;
+  onSaved: (result: CreateResult) => void;
 }) {
   const { t } = useTranslation();
   const [lineText, setLineText] = useState("");
   const [startMoveNumber, setStartMoveNumber] = useState(1);
   const [startSide, setStartSide] = useState<"white" | "black">("white");
   const [userMovesFirst, setUserMovesFirst] = useState(true);
-  const [rating, setRating] = useState(1500);
+  const [rating, setRating] = useState(600);
   const [themes, setThemes] = useState<string[]>([]);
   const [availableThemes, setAvailableThemes] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isEdit = mode === "edit";
 
   useEffect(() => {
     if (!opened) return;
 
     setError(null);
-    getUserPuzzleDbPath().then((dbPath) => {
-      commands.getPuzzleThemes(dbPath).then((result) => {
+    const resolvedDbPathPromise = dbPath ? Promise.resolve(dbPath) : getUserPuzzleDbPath();
+    resolvedDbPathPromise.then((resolvedDbPath) => {
+      commands.getPuzzleThemes(resolvedDbPath).then((result) => {
         if (result.status === "ok") {
           setAvailableThemes(result.data);
         } else {
           setAvailableThemes([]);
         }
       });
+
+      if (isEdit && initialPuzzle?.id) {
+        if (initialPuzzle.themes?.length) {
+          setThemes(initialPuzzle.themes);
+        } else {
+          commands.getThemesForPuzzle(resolvedDbPath, initialPuzzle.id).then((result) => {
+            if (result.status === "ok") {
+              setThemes(result.data);
+            }
+          });
+        }
+      }
     });
-  }, [opened]);
+
+    if (isEdit && initialPuzzle) {
+      setLineText(initialPuzzle.line_text ?? "");
+      setStartMoveNumber(initialPuzzle.start_move_number ?? 1);
+      setStartSide((initialPuzzle.start_side as "white" | "black") ?? "white");
+      setUserMovesFirst(initialPuzzle.user_moves_first);
+      setRating(initialPuzzle.rating);
+      if (initialPuzzle.themes?.length) {
+        setThemes(initialPuzzle.themes);
+      } else {
+        setThemes([]);
+      }
+      return;
+    }
+
+    setLineText("");
+    setStartMoveNumber(1);
+    setStartSide("white");
+    setUserMovesFirst(true);
+    setRating(600);
+    setThemes([]);
+  }, [opened, dbPath, initialPuzzle, isEdit]);
 
   const estimatedPlyCount = estimatePlyCount(lineText);
-  const computedSplitPly = computeSplitPly(
-    STARTING_FEN,
-    startMoveNumber,
-    startSide,
-    estimatedPlyCount,
-  );
+  const computedSplitPly = computeSplitPly(startMoveNumber, startSide, estimatedPlyCount);
   const estimatedSolutionPlies =
     computedSplitPly === null ? 0 : Math.max(0, estimatedPlyCount - computedSplitPly);
 
@@ -174,9 +185,8 @@ export default function PersonalPuzzleModal({
     setError(null);
 
     try {
-      const dbPath = await getUserPuzzleDbPath();
-      const createResult = unwrap(
-        await commands.createUserPuzzle(dbPath, {
+      const resolvedDbPath = dbPath ?? (await getUserPuzzleDbPath());
+      const payload = {
           lineText: lineText.trim(),
           startMoveNumber,
           startSide,
@@ -186,41 +196,50 @@ export default function PersonalPuzzleModal({
           popularity: 0,
           nbPlays: 0,
           themes,
-        }),
+        };
+      const saveResult = unwrap(
+        isEdit && initialPuzzle?.slug
+          ? await commands.updateUserPuzzle(resolvedDbPath, initialPuzzle.slug, payload)
+          : await commands.createUserPuzzle(resolvedDbPath, payload),
       );
-      const puzzle = unwrap(await commands.getPuzzleBySlug(createResult.dbPath, createResult.slug));
+      const puzzle = unwrap(await commands.getPuzzleBySlug(saveResult.dbPath, saveResult.slug));
       const dbs = await getPuzzleDatabases();
 
       notifications.show({
-        title: "Personal puzzle saved",
-        message: `Slug: ${createResult.slug}`,
+        title: isEdit ? "Personal puzzle updated" : "Personal puzzle saved",
+        message: `Slug: ${saveResult.slug}`,
         color: "green",
         icon: <IconCheck />,
       });
 
-      onCreated({
+      onSaved({
         dbs,
-        dbPath: createResult.dbPath,
+        dbPath: saveResult.dbPath,
         puzzle,
-        slug: createResult.slug,
+        slug: saveResult.slug,
       });
 
       setLineText("");
       setStartMoveNumber(1);
       setStartSide("white");
       setUserMovesFirst(true);
-      setRating(1500);
+        setRating(600);
       setThemes([]);
       setOpened(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create puzzle.");
+      setError(e instanceof Error ? e.message : `Failed to ${isEdit ? "update" : "create"} puzzle.`);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal opened={opened} onClose={() => setOpened(false)} title="Create Personal Puzzle" size="lg">
+    <Modal
+      opened={opened}
+      onClose={() => setOpened(false)}
+      title={isEdit ? "Edit Personal Puzzle" : "Create Personal Puzzle"}
+      size="lg"
+    >
       <Stack>
         {error && (
           <Alert color="red" icon={<IconX size={16} />}>
@@ -260,8 +279,8 @@ export default function PersonalPuzzleModal({
             min={0}
             max={4000}
             value={rating}
-            onChange={(value) => setRating(typeof value === "number" ? value : 1500)}
-          />
+              onChange={(value) => setRating(typeof value === "number" ? value : 600)}
+            />
           <Switch
             mt={30}
             label="User moves first"
@@ -292,7 +311,7 @@ export default function PersonalPuzzleModal({
           />
         </div>
         <Button onClick={handleSubmit} loading={submitting}>
-          Save Puzzle
+          {isEdit ? "Save Changes" : "Save Puzzle"}
         </Button>
       </Stack>
     </Modal>

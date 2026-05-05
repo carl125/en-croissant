@@ -57,6 +57,7 @@ use crate::pgn::{count_pgn_games, delete_game, read_games, write_game};
 use crate::puzzle::{
     create_user_puzzle, delete_puzzle_database, get_puzzle, get_puzzle_by_slug,
     get_puzzle_db_info, get_puzzle_themes, get_themes_for_puzzle,
+    update_user_puzzle,
 };
 use crate::sound::get_sound_server_port;
 use crate::{
@@ -160,6 +161,7 @@ fn main() {
             get_themes_for_puzzle,
             delete_puzzle_database,
             create_user_puzzle,
+            update_user_puzzle,
             start_game,
             get_game_state,
             make_game_move,

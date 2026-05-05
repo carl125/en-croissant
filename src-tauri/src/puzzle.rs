@@ -6,7 +6,7 @@ use std::{
 };
 
 use diesel::{
-    insert_into,
+    delete, insert_into, update,
     dsl::sql,
     sql_types::{Bool, Integer, Text},
     Connection, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl,
@@ -78,6 +78,9 @@ struct NewPuzzleRecord<'a> {
     slug: Option<&'a str>,
     source_fen: Option<&'a str>,
     context_moves: Option<&'a str>,
+    line_text: Option<&'a str>,
+    start_move_number: Option<i32>,
+    start_side: Option<&'a str>,
     fen: &'a str,
     moves: &'a str,
     user_moves_first: bool,
@@ -98,6 +101,23 @@ struct NewThemeRecord<'a> {
 struct NewPuzzleThemeRecord {
     puzzle_id: i32,
     theme_id: i32,
+}
+
+#[derive(diesel::AsChangeset)]
+#[diesel(table_name = puzzles)]
+struct UpdatePuzzleRecord<'a> {
+    source_fen: Option<&'a str>,
+    context_moves: Option<&'a str>,
+    line_text: Option<&'a str>,
+    start_move_number: Option<i32>,
+    start_side: Option<&'a str>,
+    fen: &'a str,
+    moves: &'a str,
+    user_moves_first: bool,
+    rating: i32,
+    rating_deviation: i32,
+    popularity: i32,
+    nb_plays: i32,
 }
 
 impl PuzzleCache {
@@ -177,6 +197,9 @@ fn ensure_puzzle_schema(db: &mut diesel::SqliteConnection) -> Result<(), Error> 
                 slug TEXT UNIQUE,
                 source_fen TEXT,
                 context_moves TEXT,
+                line_text TEXT,
+                start_move_number INTEGER,
+                start_side TEXT,
                 fen TEXT NOT NULL,
                 moves TEXT NOT NULL,
                 user_moves_first INTEGER NOT NULL DEFAULT 0,
@@ -206,6 +229,16 @@ fn ensure_puzzle_schema(db: &mut diesel::SqliteConnection) -> Result<(), Error> 
     }
     if columns.iter().all(|column| column.name != "context_moves") {
         diesel::sql_query("ALTER TABLE puzzles ADD COLUMN context_moves TEXT").execute(db)?;
+    }
+    if columns.iter().all(|column| column.name != "line_text") {
+        diesel::sql_query("ALTER TABLE puzzles ADD COLUMN line_text TEXT").execute(db)?;
+    }
+    if columns.iter().all(|column| column.name != "start_move_number") {
+        diesel::sql_query("ALTER TABLE puzzles ADD COLUMN start_move_number INTEGER")
+            .execute(db)?;
+    }
+    if columns.iter().all(|column| column.name != "start_side") {
+        diesel::sql_query("ALTER TABLE puzzles ADD COLUMN start_side TEXT").execute(db)?;
     }
 
     diesel::sql_query(
@@ -538,6 +571,9 @@ pub fn create_user_puzzle(
             slug: Some(&slug),
             source_fen: Some(&source_fen),
             context_moves: context_moves.as_deref(),
+            line_text: Some(payload.line_text.trim()),
+            start_move_number: Some(payload.start_move_number),
+            start_side: Some(&start_side),
             fen: &puzzle_fen,
             moves: &moves,
             user_moves_first: payload.user_moves_first,
@@ -562,6 +598,95 @@ pub fn create_user_puzzle(
     Ok(CreateUserPuzzleResult {
         slug,
         puzzle_id,
+        db_path: path.to_string_lossy().to_string(),
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn update_user_puzzle(
+    file: String,
+    slug: String,
+    payload: CreateUserPuzzlePayload,
+) -> Result<CreateUserPuzzleResult, Error> {
+    let path = PathBuf::from(&file);
+    ensure_parent_dir_exists(&path)?;
+
+    let mut db = diesel::SqliteConnection::establish(&path.to_string_lossy()).expect("open database");
+    ensure_puzzle_schema(&mut db)?;
+
+    let existing_puzzle_id = puzzles::table
+        .filter(puzzles::slug.eq(Some(slug.clone())))
+        .select(puzzles::id)
+        .first::<i32>(&mut db)
+        .optional()?
+        .ok_or_else(|| Error::NoPuzzles)?;
+
+    let source_fen = STARTING_FEN.to_string();
+    let full_uci_moves = convert_solution_to_uci(&source_fen, &payload.line_text)?;
+    if full_uci_moves.is_empty() {
+        return Err(Error::NoMovesFound);
+    }
+
+    let start_side = payload.start_side.trim().to_lowercase();
+    if start_side != "white" && start_side != "black" {
+        return Err(Error::InvalidPuzzleStart(format!(
+            "Unsupported side '{}'",
+            payload.start_side
+        )));
+    }
+    let split_ply = compute_split_ply(
+        &source_fen,
+        payload.start_move_number,
+        &start_side,
+        full_uci_moves.len(),
+    )?;
+    let context_uci_moves = full_uci_moves[..split_ply].to_vec();
+    let solution_uci_moves = full_uci_moves[split_ply..].to_vec();
+    if solution_uci_moves.is_empty() {
+        return Err(Error::NoMovesFound);
+    }
+    if !payload.user_moves_first && solution_uci_moves.len() < 2 {
+        return Err(Error::NoMovesFound);
+    }
+
+    let puzzle_fen = apply_uci_moves_to_fen(&source_fen, &context_uci_moves)?;
+    let moves = solution_uci_moves.join(" ");
+    let context_moves = (!context_uci_moves.is_empty()).then(|| context_uci_moves.join(" "));
+
+    update(puzzles::table.filter(puzzles::id.eq(existing_puzzle_id)))
+        .set(UpdatePuzzleRecord {
+            source_fen: Some(&source_fen),
+            context_moves: context_moves.as_deref(),
+            line_text: Some(payload.line_text.trim()),
+            start_move_number: Some(payload.start_move_number),
+            start_side: Some(&start_side),
+            fen: &puzzle_fen,
+            moves: &moves,
+            user_moves_first: payload.user_moves_first,
+            rating: payload.rating,
+            rating_deviation: payload.rating_deviation.unwrap_or(0),
+            popularity: payload.popularity.unwrap_or(0),
+            nb_plays: payload.nb_plays.unwrap_or(0),
+        })
+        .execute(&mut db)?;
+
+    delete(puzzle_themes::table.filter(puzzle_themes::puzzle_id.eq(existing_puzzle_id)))
+        .execute(&mut db)?;
+
+    let theme_ids = get_or_create_theme_ids(&mut db, &payload.themes)?;
+    for theme_id in theme_ids {
+        insert_into(puzzle_themes::table)
+            .values(NewPuzzleThemeRecord {
+                puzzle_id: existing_puzzle_id,
+                theme_id,
+            })
+            .execute(&mut db)?;
+    }
+
+    Ok(CreateUserPuzzleResult {
+        slug,
+        puzzle_id: existing_puzzle_id,
         db_path: path.to_string_lossy().to_string(),
     })
 }

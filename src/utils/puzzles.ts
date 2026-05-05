@@ -16,6 +16,9 @@ export interface Puzzle {
     slug?: string | null;
     source_fen?: string | null;
     context_moves?: string[];
+    line_text?: string | null;
+    start_move_number?: number | null;
+    start_side?: string | null;
     fen: string;
     moves: string[];
     user_moves_first: boolean;

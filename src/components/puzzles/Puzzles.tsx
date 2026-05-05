@@ -21,6 +21,7 @@ import {
 import { useSessionStorage } from "@mantine/hooks";
 import {
   IconAlertTriangle,
+  IconEdit,
   IconFlame,
   IconPlus,
   IconSettings,
@@ -93,6 +94,7 @@ function Puzzles({ id }: { id: string }) {
 
   const [puzzleDbs, setPuzzleDbs] = useState<PuzzleDatabaseInfo[]>([]);
   const [selectedDb, setSelectedDb] = useAtom(selectedPuzzleDbAtom);
+  const [userPuzzleDbPath, setUserPuzzleDbPath] = useState<string | null>(null);
 
   const [settingsOpened, setSettingsOpened] = useState(false);
 
@@ -100,6 +102,7 @@ function Puzzles({ id }: { id: string }) {
     getPuzzleDatabases().then((databases) => {
       setPuzzleDbs(databases);
     });
+    getUserPuzzleDbPath().then(setUserPuzzleDbPath);
   }, []);
 
   const [ratingRange, setRatingRange] = useAtom(puzzleRatingRangeAtom);
@@ -230,6 +233,7 @@ function Puzzles({ id }: { id: string }) {
 
   const [addOpened, setAddOpened] = useState(false);
   const [personalOpened, setPersonalOpened] = useState(false);
+  const [editingPersonalPuzzle, setEditingPersonalPuzzle] = useState(false);
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [isPlayingSolution, setIsPlayingSolution] = useState(false);
   const [slugInput, setSlugInput] = useState("");
@@ -329,6 +333,9 @@ function Puzzles({ id }: { id: string }) {
     slug?: string | null;
     source_fen?: string | null;
     context_moves?: string | null;
+    line_text?: string | null;
+    start_move_number?: number | null;
+    start_side?: string | null;
     fen: string;
     moves: string;
     user_moves_first: boolean;
@@ -343,6 +350,9 @@ function Puzzles({ id }: { id: string }) {
       ...rawPuzzle,
       source_fen: rawPuzzle.source_fen ?? rawPuzzle.fen,
       context_moves: rawPuzzle.context_moves ? rawPuzzle.context_moves.split(" ") : [],
+      line_text: rawPuzzle.line_text,
+      start_move_number: rawPuzzle.start_move_number,
+      start_side: rawPuzzle.start_side,
       moves: rawPuzzle.moves.split(" "),
       completion: "incomplete",
     };
@@ -378,6 +388,15 @@ function Puzzles({ id }: { id: string }) {
     }
   }
 
+  const currentPuzzleData = puzzles[currentPuzzle];
+  const isCurrentPersonalPuzzle = !!currentPuzzleData?.slug && selectedDb === userPuzzleDbPath;
+  const canEditCurrentPersonalPuzzle =
+    isCurrentPersonalPuzzle &&
+    !!currentPuzzleData?.line_text &&
+    currentPuzzleData.start_move_number !== null &&
+    currentPuzzleData.start_move_number !== undefined &&
+    !!currentPuzzleData.start_side;
+
   return (
     <>
       <Portal target="#left" style={{ height: "100%" }}>
@@ -408,10 +427,24 @@ function Puzzles({ id }: { id: string }) {
           <PersonalPuzzleModal
             opened={personalOpened}
             setOpened={setPersonalOpened}
-            onCreated={({ dbs, dbPath, puzzle, slug }) => {
+            mode="create"
+            dbPath={userPuzzleDbPath}
+            onSaved={({ dbs, dbPath, puzzle, slug }) => {
               setPuzzleDbs(dbs);
               setSlugInput(slug);
               navigator.clipboard?.writeText(slug).catch(() => undefined);
+              setActivePuzzleSession({ ...puzzle, dbPath });
+            }}
+          />
+          <PersonalPuzzleModal
+            opened={editingPersonalPuzzle}
+            setOpened={setEditingPersonalPuzzle}
+            mode="edit"
+            dbPath={userPuzzleDbPath}
+            initialPuzzle={canEditCurrentPersonalPuzzle ? currentPuzzleData : null}
+            onSaved={({ dbs, dbPath, puzzle, slug }) => {
+              setPuzzleDbs(dbs);
+              setSlugInput(slug);
               setActivePuzzleSession({ ...puzzle, dbPath });
             }}
           />
@@ -521,6 +554,24 @@ function Puzzles({ id }: { id: string }) {
                     <Button variant="light" onClick={() => setPersonalOpened(true)}>
                       Create Personal Puzzle
                     </Button>
+                    <Tooltip
+                      label={
+                        isCurrentPersonalPuzzle
+                          ? canEditCurrentPersonalPuzzle
+                            ? "Edit the current personal puzzle"
+                            : "Legacy personal puzzles cannot be edited in form mode"
+                          : "Open a personal puzzle first to edit it"
+                      }
+                    >
+                      <Button
+                        variant="light"
+                        leftSection={<IconEdit size={16} />}
+                        disabled={!canEditCurrentPersonalPuzzle}
+                        onClick={() => setEditingPersonalPuzzle(true)}
+                      >
+                        Edit Personal Puzzle
+                      </Button>
+                    </Tooltip>
                   </Group>
                   <Group align="end" grow>
                     <TextInput

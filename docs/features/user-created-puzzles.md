@@ -409,3 +409,74 @@ This keeps old DBs valid and avoids forcing a one-time migration of all puzzle
 The puzzle runtime now supports optional review context through `source_fen` and
  `context_moves`, while preserving compatibility with older snapshot-style
  puzzle DBs that only provide `fen` and `moves`.
+
+## Editing Personal Puzzles
+
+The app now supports editing personal puzzles in-place by `slug`, but only for
+ puzzles created after edit metadata was added.
+
+### Why edit support is gated
+
+The creation UI is built around:
+
+- `whole line`
+- `start move number`
+- `start side`
+
+Older personal puzzles only store normalized runtime fields such as:
+
+- `source_fen`
+- `context_moves`
+- `fen`
+- `moves`
+
+That is enough to review the puzzle, but not enough to reconstruct the exact
+ create-form inputs without adding brittle reverse-conversion logic.
+
+### Metadata stored for editable puzzles
+
+Newly created or updated personal puzzles also store:
+
+- `line_text`
+- `start_move_number`
+- `start_side`
+
+These fields are not needed by the runtime itself. They exist so the app can
+ reopen the same puzzle in the create form, prefill the original inputs, and
+ save edits back to the same `slug`.
+
+### Legacy compatibility strategy
+
+Personal puzzles created before this metadata exists remain valid for:
+
+- slug lookup
+- random review through `user-puzzles.db3`
+- context-aware replay and navigation
+
+But they are treated as legacy records for editing:
+
+- they can still be loaded and solved
+- they do not support form-mode edit
+
+The UI should disable edit for those puzzles instead of trying to reconstruct a
+ possibly incorrect form state.
+
+### Update flow
+
+Edit mode reuses the same modal as create mode.
+
+The flow is:
+
+1. Load a personal puzzle by slug or open one from the user puzzle DB.
+2. If the puzzle has edit metadata, open the modal in edit mode.
+3. Prefill `whole line`, `start move number`, `start side`, `user moves first`,
+   `rating`, and themes.
+4. Save through `update_user_puzzle(...)`.
+5. Keep the same `slug`.
+6. Reload the updated puzzle into the active review session.
+
+### Why slug stays stable
+
+The external learning workflow references puzzles by `slug`, so edit support
+ must update the same row in place instead of creating a replacement row with a
+ new identifier.

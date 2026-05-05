@@ -398,6 +398,14 @@ async createUserPuzzle(file: string, payload: CreateUserPuzzlePayload) : Promise
     else return { status: "error", error: e  as any };
 }
 },
+async updateUserPuzzle(file: string, slug: string, payload: CreateUserPuzzlePayload) : Promise<Result<CreateUserPuzzleResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_user_puzzle", { file, slug, payload }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async startGame(gameId: string, config: GameConfig) : Promise<Result<GameState, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("start_game", { gameId, config }) };
@@ -545,7 +553,7 @@ export type PositionQueryJs = { fen: string; type_: string }
 export type PositionStats = { move: string; white: number; draw: number; black: number }
 export type ProgressEvent = { id: string; progress: number; finished: boolean }
 export type ProgressItem = { id: string; progress: number; finished: boolean }
-export type Puzzle = { id: number; slug: string | null; source_fen: string | null; context_moves: string | null; fen: string; moves: string; user_moves_first: boolean; rating: number; rating_deviation: number; popularity: number; nb_plays: number }
+export type Puzzle = { id: number; slug: string | null; source_fen: string | null; context_moves: string | null; line_text: string | null; start_move_number: number | null; start_side: string | null; fen: string; moves: string; user_moves_first: boolean; rating: number; rating_deviation: number; popularity: number; nb_plays: number }
 export type PuzzleDatabaseInfo = { title: string; description: string; puzzleCount: number; storageSize: bigint; path: string }
 export type QueryOptions<SortT> = { skipCount: boolean; page?: number | null; pageSize?: number | null; sort: SortT; direction: SortDirection }
 export type QueryResponse<T> = { data: T; count: number | null }
