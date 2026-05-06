@@ -480,3 +480,23 @@ The flow is:
 The external learning workflow references puzzles by `slug`, so edit support
  must update the same row in place instead of creating a replacement row with a
  new identifier.
+
+## Clipboard Export
+
+After creating or updating a personal puzzle, the app copies a review-friendly
+ identifier string to the clipboard automatically.
+
+Preferred format:
+
+- `Opening Name<TAB>slug`
+
+Example:
+
+- `Italian Game: Classical Variation<TAB>pz_ab12cd34`
+
+The opening name is derived from the puzzle's starting context using the
+ existing opening lookup already available in the app. If no opening can be
+ resolved, the clipboard falls back to the raw slug.
+
+This avoids the extra manual step of focusing the slug field and copying it by
+ hand before pasting it into an external review or learning workflow.

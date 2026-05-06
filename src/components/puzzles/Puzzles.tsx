@@ -432,7 +432,6 @@ function Puzzles({ id }: { id: string }) {
             onSaved={({ dbs, dbPath, puzzle, slug }) => {
               setPuzzleDbs(dbs);
               setSlugInput(slug);
-              navigator.clipboard?.writeText(slug).catch(() => undefined);
               setActivePuzzleSession({ ...puzzle, dbPath });
             }}
           />

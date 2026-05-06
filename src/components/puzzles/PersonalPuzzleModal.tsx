@@ -14,9 +14,12 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconX } from "@tabler/icons-react";
+import { parseUci } from "chessops";
+import { makeFen } from "chessops/fen";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { commands, type Puzzle as BoundPuzzle, type PuzzleDatabaseInfo } from "@/bindings";
+import { positionFromFen } from "@/utils/chessops";
 import { getPuzzleDatabases, getUserPuzzleDbPath, type Puzzle as FrontendPuzzle } from "@/utils/puzzles";
 import { unwrap } from "@/utils/unwrap";
 
@@ -86,6 +89,33 @@ function validatePuzzleDefinition(
   }
 
   return null;
+}
+
+async function getClipboardLabel(puzzle: BoundPuzzle, slug: string): Promise<string> {
+  const sourceFen = puzzle.source_fen ?? puzzle.fen;
+  const contextMoves = puzzle.context_moves?.split(" ").filter(Boolean) ?? [];
+  const solutionMoves = puzzle.moves.split(" ").filter(Boolean);
+  const allMoves = [...contextMoves, ...solutionMoves];
+  const fens = [sourceFen];
+  const [pos] = positionFromFen(sourceFen);
+
+  if (pos) {
+    for (const moveText of allMoves) {
+      const move = parseUci(moveText);
+      if (!move) {
+        break;
+      }
+      pos.play(move);
+      fens.push(makeFen(pos.toSetup()));
+    }
+  }
+
+  const openingResult = await commands.getOpeningFromFens(fens);
+  if (openingResult.status === "ok" && openingResult.data.trim()) {
+    return `${openingResult.data}\t${slug}`;
+  }
+
+  return slug;
 }
 
 export default function PersonalPuzzleModal({
@@ -204,10 +234,17 @@ export default function PersonalPuzzleModal({
       );
       const puzzle = unwrap(await commands.getPuzzleBySlug(saveResult.dbPath, saveResult.slug));
       const dbs = await getPuzzleDatabases();
+      const clipboardText = await getClipboardLabel(puzzle, saveResult.slug);
+      const copiedToClipboard = await navigator.clipboard
+        ?.writeText(clipboardText)
+        .then(() => true)
+        .catch(() => false);
 
       notifications.show({
         title: isEdit ? "Personal puzzle updated" : "Personal puzzle saved",
-        message: `Slug: ${saveResult.slug}`,
+        message: copiedToClipboard
+          ? `Copied to clipboard: ${clipboardText}`
+          : `Slug: ${saveResult.slug}`,
         color: "green",
         icon: <IconCheck />,
       });
