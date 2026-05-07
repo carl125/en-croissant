@@ -110,7 +110,7 @@ function PuzzleBoard({
     const uci = makeUci(move);
     newPos.play(move);
 
-    if (puzzle.moves[currentMove] === uci || newPos.isCheckmate()) {
+    if (puzzle.moves[currentMove] === uci) {
       const replySequence = ++replySequenceRef.current;
       makeMoves({
         payload: [uci],

@@ -80,6 +80,7 @@ function Puzzles({ id }: { id: string }) {
   const reset = useStore(store, (s) => s.reset);
   const makeMove = useStore(store, (s) => s.makeMove);
   const setState = useStore(store, (s) => s.setState);
+  const setHeaders = useStore(store, (s) => s.setHeaders);
   const setShapes = useStore(store, (s) => s.setShapes);
   const currentMove = useStore(store, (s) => s.currentNode().move);
   const currentFen = useStore(store, (s) => s.currentNode().fen);
@@ -298,6 +299,17 @@ function Puzzles({ id }: { id: string }) {
   const getPuzzleRevealPath = (puzzle?: Puzzle) =>
     revealPath ?? Array.from({ length: getPuzzleStartPathLength(puzzle) }, () => 0);
 
+  const setPuzzleRevealPathLength = (pathLength: number) => {
+    const nextReveal = Array.from({ length: pathLength }, () => 0);
+    if (revealPath && revealPath.length === nextReveal.length) {
+      return;
+    }
+    setHeaders({
+      ...store.getState().headers,
+      reveal: nextReveal,
+    });
+  };
+
   const getCurrentSolutionIndex = (puzzle?: Puzzle): number | null => {
     if (!puzzle) return null;
     const contextLength = getContextLength(puzzle);
@@ -396,6 +408,8 @@ function Puzzles({ id }: { id: string }) {
     currentPuzzleData.start_move_number !== null &&
     currentPuzzleData.start_move_number !== undefined &&
     !!currentPuzzleData.start_side;
+  const shouldRestrictForwardNavigation =
+    !!currentPuzzleData && !isPlayingSolution && currentPuzzleData.completion !== "correct";
 
   return (
     <>
@@ -815,6 +829,7 @@ function Puzzles({ id }: { id: string }) {
                 if (curPuzzle.completion === "incomplete") {
                   changeCompletion("incorrect");
                 }
+                setPuzzleRevealPathLength(getContextLength(curPuzzle) + curPuzzle.moves.length);
                 setIsPlayingSolution(true);
                 goToStart();
                 const solutionStartIndex = getVisibleStartSolutionIndex(curPuzzle);
@@ -865,7 +880,7 @@ function Puzzles({ id }: { id: string }) {
             <MoveControls
               readOnly
               onNext={
-                isPuzzleIncomplete && !isPlayingSolution
+                shouldRestrictForwardNavigation
                   ? () => {
                       const curPuzzle = puzzles[currentPuzzle];
                       const puzzleRevealPath = getPuzzleRevealPath(curPuzzle);
@@ -876,7 +891,7 @@ function Puzzles({ id }: { id: string }) {
                   : undefined
               }
               onEnd={
-                isPuzzleIncomplete && !isPlayingSolution
+                shouldRestrictForwardNavigation
                   ? () => {
                       const curPuzzle = puzzles[currentPuzzle];
                       const puzzleRevealPath = getPuzzleRevealPath(curPuzzle);
